@@ -124,7 +124,7 @@ export const config = {
   // --- 管理画面（Playwright）設定 ---
   adminDropdownSelector: optional('ADMIN_DROPDOWN_SELECTOR', 'select[name="status"]'),
   adminSaveSelector:     optional('ADMIN_SAVE_SELECTOR', 'button[type="submit"]'),
-  adminSuccessSelector:  optional('ADMIN_SUCCESS_SELECTOR', ''),
+  adminSuccessSelector:  optional('ADMIN_SUCCESS_SELECTOR', '.bg-blue-50'),
   pageLoadTimeout:       parseInt(optional('PAGE_LOAD_TIMEOUT', '10000')),
 
   // --- 認証 ---
