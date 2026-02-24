@@ -92,7 +92,7 @@ export const config = {
    * 例: "M/D" → "2/24" / "YYYY/M/D" → "2026/2/24" / "M月D日" → "2月24日"
    * 空欄にすると SPREADSHEET_URL の gid で固定指定になる
    */
-  sheetDateFormat: optional('SHEET_DATE_FORMAT', 'M/D'),
+  sheetDateFormat: optional('SHEET_DATE_FORMAT', 'YYYY-MM-DD'),
 
   // --- 列設定 ---
   checkColumnA,
