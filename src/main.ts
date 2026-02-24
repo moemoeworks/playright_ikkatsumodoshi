@@ -1,7 +1,12 @@
 import * as fs from 'fs';
 import { chromium, BrowserContext } from 'playwright';
 import { config } from './config';
-import { readTargetRows, markRowAsCompleted, markRowAsError } from './sheets';
+import {
+  readTargetRows,
+  markRowAsCompleted,
+  markRowAsError,
+  closeSheetsPage,
+} from './sheets';
 import { changeAdminStatus } from './admin';
 
 function sleep(ms: number): Promise<void> {
@@ -22,48 +27,57 @@ async function loadBrowserContext(browser: import('playwright').Browser): Promis
 async function main(): Promise<void> {
   console.log('=== Playwright ステータス一括変更ツール ===\n');
 
-  // --- スプレッドシートから対象行を取得 ---
-  console.log('スプレッドシートから対象行を読み込み中...');
-  const targetRows = await readTargetRows();
-
-  if (targetRows.length === 0) {
-    console.log(`処理対象なし（${config.checkColumnA}列="${config.triggerStatusA}" の行が見つかりません）`);
-    return;
-  }
-
-  console.log(`処理対象: ${targetRows.length} 件\n`);
-
-  // --- Playwright ブラウザ起動 ---
+  // --- Playwright ブラウザ起動（スプレッドシート読み込みにも使用）---
   const browser = await chromium.launch({ headless: config.headless });
   const context = await loadBrowserContext(browser);
 
   let successCount = 0;
   let errorCount = 0;
+  let totalRows = 0;
 
   try {
+    // --- スプレッドシートから対象行を取得（ブラウザ経由）---
+    console.log('スプレッドシートから対象行を読み込み中...');
+    const targetRows = await readTargetRows(context);
+    totalRows = targetRows.length;
+
+    if (targetRows.length === 0) {
+      const triggerList = config.triggerStatusAList.join(' / ');
+      console.log(
+        `処理対象なし（${config.checkColumnA}列="${triggerList}" かつ ` +
+        `${config.checkColumnB}列≠"${config.triggerStatusBExclude}" の行が見つかりません）`
+      );
+      return;
+    }
+
+    console.log(`処理対象: ${targetRows.length} 件\n`);
+
     for (let i = 0; i < targetRows.length; i++) {
       const row = targetRows[i];
       const url = (row.values[config.urlColumnIndex] ?? '').trim();
 
-      console.log(`[${i + 1}/${targetRows.length}] 行 ${row.rowNumber} を処理中...`);
+      console.log(
+        `[${i + 1}/${targetRows.length}] 行 ${row.rowNumber} を処理中...` +
+        `（${config.checkColumnA}列: "${row.triggerValue}"）`
+      );
 
       if (!url) {
         console.warn(`  ⚠ ${config.urlColumn}列のURLが空です。スキップします。`);
-        await markRowAsError(row.rowNumber, 'URLが空のためスキップ');
+        await markRowAsError(context, row.rowNumber, 'URLが空のためスキップ');
         errorCount++;
         continue;
       }
 
       const page = await context.newPage();
       try {
-        await changeAdminStatus(page, url);
-        await markRowAsCompleted(row.rowNumber);
+        await changeAdminStatus(page, url, row.triggerValue);
+        await markRowAsCompleted(context, row.rowNumber);
         console.log(`  ✓ 完了\n`);
         successCount++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`  ✗ エラー: ${message}\n`);
-        await markRowAsError(row.rowNumber, message).catch(() => {});
+        await markRowAsError(context, row.rowNumber, message).catch(() => {});
         errorCount++;
       } finally {
         await page.close();
@@ -75,13 +89,15 @@ async function main(): Promise<void> {
       }
     }
   } finally {
+    // シートページを閉じる
+    await closeSheetsPage();
     // 認証状態を保存（セッションの更新を反映）
     await context.storageState({ path: config.authStoragePath });
     await browser.close();
   }
 
   console.log('=== 完了 ===');
-  console.log(`成功: ${successCount} 件 / エラー: ${errorCount} 件 / 合計: ${targetRows.length} 件`);
+  console.log(`成功: ${successCount} 件 / エラー: ${errorCount} 件 / 合計: ${totalRows} 件`);
 }
 
 main().catch((err) => {

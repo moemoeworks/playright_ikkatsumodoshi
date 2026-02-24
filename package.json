@@ -8,8 +8,7 @@
     "build": "tsc"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "googleapis": "^140.0.0"
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
