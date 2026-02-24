@@ -299,3 +299,115 @@ export async function closeSheetsPage(): Promise<void> {
   }
   _sheetsPage = null;
 }
+
+// ===== ログシート =====
+
+let _logPage: Page | null = null;
+
+/** ログシートタブを開く（キャッシュあり） */
+async function openLogSheetPage(context: BrowserContext): Promise<Page> {
+  if (_logPage && !_logPage.isClosed()) return _logPage;
+
+  const baseUrl = `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/edit`;
+  const page = await context.newPage();
+  console.log('  [Log] ログシートを開いています...');
+  await page.goto(baseUrl, { waitUntil: 'networkidle', timeout: 30000 });
+
+  if (page.url().includes('accounts.google.com')) {
+    await page.close();
+    throw new Error('Google ログインが要求されました。`npm run setup-auth` を実行してください。');
+  }
+
+  await page.waitForSelector('[role="grid"], .waffle-column-header-container', { timeout: 30000 });
+
+  console.log(`  [Log] タブ「${config.logSheetName}」に切り替え中...`);
+  try {
+    const tabLocator = page.locator('[role="tab"]').filter({ hasText: config.logSheetName }).first();
+    await tabLocator.click({ timeout: 10000 });
+    await page.waitForTimeout(1000);
+  } catch {
+    await page.close();
+    throw new Error(
+      `ログシート「${config.logSheetName}」が見つかりません。\n` +
+      `スプレッドシートに「${config.logSheetName}」という名前のタブを作成してください。`
+    );
+  }
+
+  _logPage = page;
+  return page;
+}
+
+/**
+ * ログシートの次の書き込み行番号を返す
+ * シートが空なら 1、ヘッダーのみなら 2、データあれば末尾+1
+ */
+export async function getLogSheetNextRow(context: BrowserContext): Promise<number> {
+  const csvUrl =
+    `https://docs.google.com/spreadsheets/d/${config.spreadsheetId}/export` +
+    `?format=csv&sheet=${encodeURIComponent(config.logSheetName)}`;
+  try {
+    const response = await context.request.get(csvUrl);
+    if (!response.ok()) return 1;
+    const csvText = await response.text();
+    if (!csvText.trim() || csvText.trimStart().startsWith('<')) return 1;
+    const rows = parseCsv(csvText).filter(r => r.some(c => c.trim()));
+    return rows.length > 0 ? rows.length + 1 : 1;
+  } catch {
+    return 1;
+  }
+}
+
+/** ログシートの指定行に値の配列を1行まとめて書き込む */
+export async function writeLogRow(
+  context: BrowserContext,
+  rowNumber: number,
+  values: string[]
+): Promise<void> {
+  const page = await openLogSheetPage(context);
+  const firstCell = `A${rowNumber}`;
+
+  const nameBoxSelectors = [
+    '[aria-label="Name Box"]',
+    '[aria-label="名前ボックス"]',
+    '.t-name-box-input',
+    '[class*="name-box"]',
+  ];
+
+  let focused = false;
+  for (const selector of nameBoxSelectors) {
+    try {
+      await page.click(selector, { timeout: 3000 });
+      focused = true;
+      break;
+    } catch { /* 次のセレクターを試す */ }
+  }
+
+  if (!focused) {
+    console.warn(`  ⚠ [Log] Name Box が見つかりません。行 ${rowNumber} のログ書き込みをスキップします。`);
+    return;
+  }
+
+  await page.keyboard.press('Control+A');
+  await page.keyboard.type(firstCell);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(400);
+
+  for (let i = 0; i < values.length; i++) {
+    await page.keyboard.type(values[i]);
+    if (i < values.length - 1) {
+      await page.keyboard.press('Tab');
+      await page.waitForTimeout(100);
+    } else {
+      await page.keyboard.press('Enter');
+    }
+  }
+  await page.waitForTimeout(1500);
+}
+
+/** ログシートページを閉じる */
+export async function closeLogPage(): Promise<void> {
+  if (_logPage && !_logPage.isClosed()) {
+    await _logPage.close();
+  }
+  _logPage = null;
+}

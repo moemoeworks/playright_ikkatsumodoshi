@@ -6,8 +6,14 @@ import {
   markRowAsCompleted,
   markRowAsError,
   closeSheetsPage,
+  getLogSheetNextRow,
+  writeLogRow,
+  closeLogPage,
 } from './sheets';
+
 import { changeAdminStatus } from './admin';
+
+const LOG_HEADERS = ['実行日時', 'スプシ行番号', 'URL', 'ステータス値', '結果', 'エラー内容'];
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -57,6 +63,24 @@ async function main(): Promise<void> {
 
     console.log(`処理対象: ${targetRows.length} 件\n`);
 
+    // --- ログシートの初期化 ---
+    let logNextRow = 2;
+    try {
+      console.log(`ログシート「${config.logSheetName}」を確認中...`);
+      logNextRow = await getLogSheetNextRow(context);
+      if (logNextRow === 1) {
+        await writeLogRow(context, 1, LOG_HEADERS);
+        logNextRow = 2;
+        console.log('  ヘッダーを書き込みました');
+      }
+      console.log(`  次の記録行: ${logNextRow}\n`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  ⚠ ログシートの初期化に失敗しました: ${msg}`);
+      console.warn('  ログへの記録はスキップされます。\n');
+      logNextRow = -1; // -1 = ログ無効
+    }
+
     for (let i = 0; i < targetRows.length; i++) {
       const row = targetRows[i];
       const url = (row.values[config.urlColumnIndex] ?? '').trim();
@@ -69,6 +93,11 @@ async function main(): Promise<void> {
       if (!url) {
         console.warn(`  ⚠ ${config.urlColumn}列のURLが空です。スキップします。`);
         await markRowAsError(context, row.rowNumber, 'URLが空のためスキップ');
+        if (logNextRow > 0) {
+          const ts = new Date().toLocaleString('ja-JP');
+          await writeLogRow(context, logNextRow, [ts, String(row.rowNumber), '', row.triggerValue, 'エラー', 'URLが空のためスキップ']).catch(() => {});
+          logNextRow++;
+        }
         errorCount++;
         continue;
       }
@@ -77,12 +106,22 @@ async function main(): Promise<void> {
       try {
         await changeAdminStatus(page, url, row.triggerValue);
         await markRowAsCompleted(context, row.rowNumber);
+        if (logNextRow > 0) {
+          const ts = new Date().toLocaleString('ja-JP');
+          await writeLogRow(context, logNextRow, [ts, String(row.rowNumber), url, row.triggerValue, '成功', '']).catch(() => {});
+          logNextRow++;
+        }
         console.log(`  ✓ 完了\n`);
         successCount++;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         console.error(`  ✗ エラー: ${message}\n`);
         await markRowAsError(context, row.rowNumber, message).catch(() => {});
+        if (logNextRow > 0) {
+          const ts = new Date().toLocaleString('ja-JP');
+          await writeLogRow(context, logNextRow, [ts, String(row.rowNumber), url, row.triggerValue, 'エラー', message]).catch(() => {});
+          logNextRow++;
+        }
         errorCount++;
       } finally {
         await page.close();
@@ -96,6 +135,7 @@ async function main(): Promise<void> {
   } finally {
     // シートページを閉じる
     await closeSheetsPage();
+    await closeLogPage();
     // 認証状態を保存（セッションの更新を反映）
     await context.storageState({ path: config.authStoragePath });
     await browser.close();

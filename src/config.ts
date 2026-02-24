@@ -130,6 +130,10 @@ export const config = {
   // --- 認証 ---
   authStoragePath: path.resolve(optional('AUTH_STORAGE_PATH', './auth/state.json')),
 
+  // --- ログ設定 ---
+  /** 実行ログを書き込むシートタブ名 */
+  logSheetName: optional('LOG_SHEET_NAME', 'ログ'),
+
   // --- 動作設定 ---
   headless:         optional('HEADLESS', 'false') !== 'false',
   delayBetweenRows: parseInt(optional('DELAY_BETWEEN_ROWS', '2000')),
