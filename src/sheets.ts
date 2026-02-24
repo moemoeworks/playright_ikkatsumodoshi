@@ -217,6 +217,7 @@ async function writeCellValue(
   // Name Box をクリックしてセルアドレスを入力（複数セレクターを試行）
   const nameBoxSelectors = [
     '[aria-label="Name Box"]',
+    '[aria-label="名前ボックス"]',
     '.t-name-box-input',
     '[class*="name-box"]',
   ];
