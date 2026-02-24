@@ -133,4 +133,6 @@ export const config = {
   // --- 動作設定 ---
   headless:         optional('HEADLESS', 'false') !== 'false',
   delayBetweenRows: parseInt(optional('DELAY_BETWEEN_ROWS', '2000')),
+  /** 処理件数の上限（0 = 無制限） */
+  maxRows:          parseInt(optional('MAX_ROWS', '0')),
 } as const;

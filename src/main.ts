@@ -41,6 +41,11 @@ async function main(): Promise<void> {
     const targetRows = await readTargetRows(context);
     totalRows = targetRows.length;
 
+    if (config.maxRows > 0 && targetRows.length > config.maxRows) {
+      targetRows.splice(config.maxRows);
+      console.log(`（MAX_ROWS=${config.maxRows} のため先頭 ${config.maxRows} 件に絞り込み）\n`);
+    }
+
     if (targetRows.length === 0) {
       const triggerList = config.triggerStatusAList.join(' / ');
       console.log(
